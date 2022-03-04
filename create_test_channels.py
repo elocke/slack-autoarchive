@@ -19,27 +19,28 @@ from slack_autoarchive import ChannelReaper
 load_dotenv()
 cr = ChannelReaper()
 number_channels = 50
-channel_name_prefix = 'an-interesting-channel'
+channel_name_prefix = "an-interesting-channel"
 
-if __name__ == '__main__':
-    if os.environ.get('BOT_SLACK_TOKEN', False) == False:
-      print('Need to set BOT_SLACK_TOKEN before running this program.\n\n' \
-            'Either set it in .env or run this script as:\n' \
-            'BOT_SLACK_TOKEN=<secret token> python create_test_channels.py')
-      exit(1)
-      
+if __name__ == "__main__":
+    if os.environ.get("BOT_SLACK_TOKEN", False) == False:
+        print(
+            "Need to set BOT_SLACK_TOKEN before running this program.\n\n"
+            "Either set it in .env or run this script as:\n"
+            "BOT_SLACK_TOKEN=<secret token> python create_test_channels.py"
+        )
+        exit(1)
+
     for x in range(number_channels):
-        channel_name = f'{channel_name_prefix}-{x}'
-        payload = {'name': channel_name}
-        print(f'Creating channel: {channel_name}')
-        resp = cr.slack_api_http('conversations.create', payload, 'POST')
+        channel_name = f"{channel_name_prefix}-{x}"
+        payload = {"name": channel_name}
+        print(f"Creating channel: {channel_name}")
+        resp = cr.slack_api_http("conversations.create", payload, "POST")
 
-        if resp['ok']:
-            payload = {'channel': resp['channel']['id']}
-            resp_leave = cr.slack_api_http('conversations.leave', payload, 'POST')
+        if resp["ok"]:
+            payload = {"channel": resp["channel"]["id"]}
+            resp_leave = cr.slack_api_http("conversations.leave", payload, "POST")
 
-            if not resp_leave['ok']:
-                print(f'Error removing the bot from #{channel_name}: '\
-                      f'{resp_leave.json()["error"]}')
+            if not resp_leave["ok"]:
+                print(f"Error removing the bot from #{channel_name}: " f'{resp_leave.json()["error"]}')
         else:
             print(resp)

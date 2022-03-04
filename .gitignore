@@ -4,3 +4,5 @@ whitelist.txt
 __pycache__
 *.pyc
 *.env
+
+*.csv
