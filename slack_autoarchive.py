@@ -68,7 +68,9 @@ class ChannelReaper:
             return self.slack_api_http(api_endpoint, payload, method)
 
         if response.status_code == requests.codes.ok and response.json().get("error", False) == "not_authed":
-            self.logger.error(f"Need to setup auth. eg, BOT_SLACK_TOKEN=<secret token> " f"python slack-autoarchive.py")
+            self.logger.error(
+                f"Need to setup auth. eg, BOT_SLACK_TOKEN=<secret token> " f"python slack-autoarchive.py"
+            )
             sys.exit(1)
 
         return response.json()
@@ -94,7 +96,12 @@ class ChannelReaper:
         all_users = {}
         for user in users:
             if not user["is_bot"]:
-                all_users[user["id"]] = {"name": user["name"], "realname": user["real_name"]}
+                try:
+                    all_users[user["id"]] = {"name": user["name"], "realname": user["profile"]["real_name_normalized"]}
+                except KeyError as e:
+                    pprint(user)
+                    pprint(e)
+                    raise Exception
         return all_users
 
     def get_all_channels(self):
@@ -119,36 +126,47 @@ class ChannelReaper:
 
         all_channels = []
         for channel in channels:
-            self.logger.info(f'Checking if the bot is in #{channel["name"]}...')
-            if not channel["is_member"]:
-                self.join_channel(channel)
-            channel_history = self.get_channel_history(channel)
-            latest_timestamp = self.get_last_message_timestamp(channel_history, self.settings.get("too_old_datetime"))
-            info_payload = {"channel": channel["id"]}
-            channel_info = self.slack_api_http(api_endpoint="conversations.info", payload=info_payload, method="GET")
-            channel_info = channel_info["channel"]
-            creator_name = users[channel["creator"]]["name"]
-            creator_realname = users[channel["creator"]]["realname"]
+            if not channel["is_shared"]:
+                self.logger.info(f'Checking if the bot is in #{channel["name"]}...')
+                if not channel["is_member"] and not channel["is_shared"]:
+                    self.join_channel(channel)
+                channel_history = self.get_channel_history(channel)
+                latest_timestamp = self.get_last_message_timestamp(
+                    channel_history, self.settings.get("too_old_datetime")
+                )
+                info_payload = {"channel": channel["id"]}
+                channel_info = self.slack_api_http(
+                    api_endpoint="conversations.info", payload=info_payload, method="GET"
+                )
+                channel_info = channel_info["channel"]
+                try:
+                    creator_name = users[channel["creator"]]["name"]
+                    creator_realname = users[channel["creator"]]["realname"]
+                except KeyError as e:
+                    pprint(channel)
+                    pprint(e)
+                    creator_name = ""
+                    creator_realname = ""
 
-            all_channels.append(
-                {
-                    "id": channel["id"],
-                    "name": channel["name"],
-                    "created": channel["created"],
-                    "num_members": channel["num_members"],
-                    "is_member": channel["is_member"],
-                    "previous_names": channel_info["previous_names"] if "previous_names" in channel_info else "",
-                    "topic": channel_info["topic"],
-                    "purpose": channel_info["purpose"],
-                    "creator": channel_info["creator"],
-                    "creator_name": creator_name,
-                    "creator_realname": creator_realname,
-                    "archived": channel_info["is_archived"],
-                    "is_private": channel_info["is_private"],
-                    "is_shared": channel_info["is_shared"],
-                    "last_message_timestamp": {"timestamp": latest_timestamp[0], "is_user": latest_timestamp[1]},
-                }
-            )
+                all_channels.append(
+                    {
+                        "id": channel["id"],
+                        "name": channel["name"],
+                        "created": channel["created"],
+                        "num_members": channel["num_members"],
+                        "is_member": channel["is_member"],
+                        "previous_names": channel_info["previous_names"] if "previous_names" in channel_info else "",
+                        "topic": channel_info["topic"],
+                        "purpose": channel_info["purpose"],
+                        "creator": channel_info["creator"],
+                        "creator_name": creator_name,
+                        "creator_realname": creator_realname,
+                        "archived": channel_info["is_archived"],
+                        "is_private": channel_info["is_private"],
+                        "is_shared": channel_info["is_shared"],
+                        "last_message_timestamp": {"timestamp": latest_timestamp[0], "is_user": latest_timestamp[1]},
+                    }
+                )
 
         return all_channels
 
@@ -219,9 +237,10 @@ class ChannelReaper:
 
     def send_channel_message(self, channel_id, message):
         """Send a message to a channel or user."""
+        self.logger.info(f"Would have posted a {message} to ${channel_id}")
         payload = {"channel": channel_id, "text": message}
         api_endpoint = "chat.postMessage"
-        self.slack_api_http(api_endpoint=api_endpoint, payload=payload, method="POST")
+        # self.slack_api_http(api_endpoint=api_endpoint, payload=payload, method="POST")
 
     def archive_channel(self, channel):
         """Archive a channel, and send alert to slack admins."""
@@ -229,11 +248,12 @@ class ChannelReaper:
 
         if not self.settings.get("dry_run"):
             self.logger.info(f'Archiving channel #{channel["name"]}')
-            payload = {"channel": channel["id"]}
-            resp = self.slack_api_http(api_endpoint=api_endpoint, payload=payload)
-            if not resp.get("ok"):
-                stdout_message = f'Error archiving #{channel["name"]}: ' f'{resp["error"]}'
-                self.logger.error(stdout_message)
+            self.logger.info(f"DIDNT ARCHIVE SHIT IM COMMENTED OUT")
+            # payload = {"channel": channel["id"]}
+            # resp = self.slack_api_http(api_endpoint=api_endpoint, payload=payload)
+            # if not resp.get("ok"):
+            #     stdout_message = f'Error archiving #{channel["name"]}: ' f'{resp["error"]}'
+            #     self.logger.error(stdout_message)
         else:
             self.logger.info(f"THIS IS A DRY RUN. " f'{channel["name"]} would have been archived.')
 
@@ -255,7 +275,7 @@ class ChannelReaper:
 
             if self.settings.get("dry_run"):
                 admin_msg = f"[DRY RUN] {admin_msg}"
-            self.send_channel_message(self.settings.get("admin_channel"), admin_msg)
+            # self.send_channel_message(self.settings.get("admin_channel"), admin_msg)
 
     def csv_report(self, channels):
         csv_file = self.settings.get("reportfile", "report.csv")
@@ -277,8 +297,8 @@ class ChannelReaper:
                     "name": chan["name"],
                     "num_members": chan["num_members"],
                     "previous_names": ", ".join(chan["previous_names"]),
-                    "purpose": chan["purpose"]["value"],
-                    "topic": chan["topic"]["value"],
+                    "purpose": chan["purpose"]["value"].replace("\n", "\\n"),
+                    "topic": chan["topic"]["value"].replace("\n", "\\n"),
                 }
             )
 
@@ -327,7 +347,7 @@ class ChannelReaper:
                 channel["is_disused"] = self.is_channel_disused(channel, self.settings.get("too_old_datetime"))
 
                 if not channel["is_whitelisted"] and channel["is_disused"]:
-                    channels["archive_candidate"] = True
+                    channel["archive_candidate"] = True
                     archived_channels.append(channel)
                     self.archive_channel(channel)
 
